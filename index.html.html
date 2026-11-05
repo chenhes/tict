@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>井字棋 AI 人机对战</title>
+    <style>
+        *{box-sizing: border-box;font-family:system-ui}
+        body{display:flex;flex-direction:column;align-items:center;background:#1a1a2e;color:#fff;margin-top:30px}
+        .board{display:grid;grid-template-columns:repeat(3, 100px);gap:8px;margin:20px 0}
+        .cell{width:100px;height:100px;background:#16213e;border-radius:8px;font-size:48px;font-weight:bold;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:0.2s}
+        .cell:hover{background:#0f3460}
+        .cell.X{color:#e94560}
+        .cell.O{color:#00d9ff}
+        .info{font-size:20px;margin-bottom:10px;height:28px}
+        button{padding:8px 16px;border:none;border-radius:6px;background:#e94560;color:white;font-size:16px;cursor:pointer}
+    </style>
+</head>
+<body>
+    <h2>井字棋（极小极大AI）</h2>
+    <div class="info" id="msg">轮到你下棋（X）</div>
+    <div class="board" id="board"></div>
+    <button onclick="restart()">重新开始</button>
+
+<script>
+const boardEl = document.getElementById('board');
+const msgEl = document.getElementById('msg');
+let board = [null,null,null,null,null,null,null,null,null];
+const HUMAN = 'X';
+const AI = 'O';
+
+// 渲染棋盘
+function render(){
+    boardEl.innerHTML = '';
+    board.forEach((v,i)=>{
+        const div = document.createElement('div');
+        div.className = 'cell ' + (v||'');
+        div.innerText = v||'';
+        if(!v) div.onclick = ()=>humanMove(i);
+        boardEl.appendChild(div);
+    })
+}
+
+// 玩家落子
+function humanMove(idx){
+    if(board[idx] || checkWin(board) || isFull(board)) return;
+    board[idx] = HUMAN;
+    render();
+    const win = checkWin(board);
+    if(win){
+        msgEl.innerText = "🎉 你赢了！";
+        return;
+    }
+    if(isFull(board)){
+        msgEl.innerText = "🤝 平局";
+        return;
+    }
+    msgEl.innerText = "AI思考中...";
+    setTimeout(aiMove, 400);
+}
+
+// AI极小极大算法
+function aiMove(){
+    let bestScore = -Infinity;
+    let bestPos;
+    for(let i=0;i<9;i++){
+        if(!board[i]){
+            board[i] = AI;
+            const s = minimax(board, false);
+            board[i] = null;
+            if(s>bestScore){
+                bestScore = s;
+                bestPos = i;
+            }
+        }
+    }
+    board[bestPos] = AI;
+    render();
+    const win = checkWin(board);
+    if(win){
+        msgEl.innerText = "😵 AI获胜";
+        return;
+    }
+    if(isFull(board)){
+        msgEl.innerText = "🤝 平局";
+        return;
+    }
+    msgEl.innerText = "轮到你下棋（X）";
+}
+
+function minimax(b, isMax){
+    const res = checkWin(b);
+    if(res===AI) return 10;
+    if(res===HUMAN) return -10;
+    if(isFull(b)) return 0;
+
+    if(isMax){
+        let score = -Infinity;
+        for(let i=0;i<9;i++){
+            if(!b[i]){
+                b[i]=AI;
+                score = Math.max(score, minimax(b,false));
+                b[i]=null;
+            }
+        }
+        return score;
+    }else{
+        let score = Infinity;
+        for(let i=0;i<9;i++){
+            if(!b[i]){
+                b[i]=HUMAN;
+                score = Math.min(score, minimax(b,true));
+                b[i]=null;
+            }
+        }
+        return score;
+    }
+}
+
+function checkWin(b){
+    const lines = [
+        [0,1,2],[3,4,5],[6,7,8],
+        [0,3,6],[1,4,7],[2,5,8],
+        [0,4,8],[2,4,6]
+    ]
+    for(let [a,aa,aaa] of lines){
+        if(b[a] && b[a]===b[aa] && b[a]===b[aaa]) return b[a];
+    }
+    return null;
+}
+function isFull(b){
+    return b.every(x=>x!==null);
+}
+function restart(){
+    board = [null,null,null,null,null,null,null,null,null];
+    msgEl.innerText = "轮到你下棋（X）";
+    render();
+}
+render();
+</script>
+</body>
+</html>
