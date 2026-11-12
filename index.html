@@ -3,140 +3,153 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>井字棋 AI 人机对战</title>
+    <title>本地文件整理助手｜WorkBuddy Agent协作项目</title>
     <style>
-        *{box-sizing: border-box;font-family:system-ui}
-        body{display:flex;flex-direction:column;align-items:center;background:#1a1a2e;color:#fff;margin-top:30px}
-        .board{display:grid;grid-template-columns:repeat(3, 100px);gap:8px;margin:20px 0}
-        .cell{width:100px;height:100px;background:#16213e;border-radius:8px;font-size:48px;font-weight:bold;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:0.2s}
-        .cell:hover{background:#0f3460}
-        .cell.X{color:#e94560}
-        .cell.O{color:#00d9ff}
-        .info{font-size:20px;margin-bottom:10px;height:28px}
-        button{padding:8px 16px;border:none;border-radius:6px;background:#e94560;color:white;font-size:16px;cursor:pointer}
+        body{font-family:system-ui;margin:30px;max-width:1000px;}
+        .step{border:1px solid #ddd;padding:20px;margin:15px 0;border-radius:8px;}
+        .warn{color:#c00;background:#fff2f2;padding:10px;border-radius:6px;}
+        .ok{color:#090;background:#f0fff4;padding:10px;border-radius:6px;}
+        button{padding:8px 16px;margin:4px;cursor:pointer;}
+        table{border-collapse:collapse;width:100%;margin:15px 0;}
+        td,th{border:1px solid #ccc;padding:8px;}
+        #previewList{max-height:300px;overflow:auto;border:1px solid #eee;padding:10px;}
     </style>
 </head>
 <body>
-    <h2>井字棋（极小极大AI）</h2>
-    <div class="info" id="msg">轮到你下棋（X）</div>
-    <div class="board" id="board"></div>
-    <button onclick="restart()">重新开始</button>
+    <h1>本地文件整理助手</h1>
+    <p>项目：人工智能导论 WorkBuddy Agent 人机协作项目｜浏览器纯前端，不上传任何文件</p>
 
-<script>
-const boardEl = document.getElementById('board');
-const msgEl = document.getElementById('msg');
-let board = [null,null,null,null,null,null,null,null,null];
-const HUMAN = 'X';
-const AI = 'O';
+    <div class="step">
+        <h3>第一步：授权文件夹</h3>
+        <div class="warn">⚠️ 禁止选择C盘Windows系统目录，可能引发系统故障！建议选择下载文件夹、实验文件夹</div>
+        <button id="selectFolder">选择目标文件夹</button>
+        <p id="folderInfo">未选择文件夹</p>
+    </div>
 
-// 渲染棋盘
-function render(){
-    boardEl.innerHTML = '';
-    board.forEach((v,i)=>{
-        const div = document.createElement('div');
-        div.className = 'cell ' + (v||'');
-        div.innerText = v||'';
-        if(!v) div.onclick = ()=>humanMove(i);
-        boardEl.appendChild(div);
-    })
-}
+    <div class="step">
+        <h3>第二步：预览待整理变更（预览阶段不会改动磁盘）</h3>
+        <button id="genPreview" disabled>生成分类预览</button>
+        <div id="previewList"></div>
+        <div class="warn">黑名单规则：文件名包含 data / dataset 的zip压缩包跳过，不移动</div>
+    </div>
 
-// 玩家落子
-function humanMove(idx){
-    if(board[idx] || checkWin(board) || isFull(board)) return;
-    board[idx] = HUMAN;
-    render();
-    const win = checkWin(board);
-    if(win){
-        msgEl.innerText = "🎉 你赢了！";
-        return;
-    }
-    if(isFull(board)){
-        msgEl.innerText = "🤝 平局";
-        return;
-    }
-    msgEl.innerText = "AI思考中...";
-    setTimeout(aiMove, 400);
-}
+    <div class="step">
+        <h3>第三步：执行整理 / 回滚操作</h3>
+        <button id="runSort" disabled>✅ 确认执行整理</button>
+        <button id="rollbackBtn">↩️ 一键回滚</button>
+        <button id="exportCSV">📄 导出CSV操作记录</button>
+        <h4>操作记录面板</h4>
+        <table id="recordTable">
+            <thead><tr><th>源路径</th><th>目标路径</th><th>动作</th><th>结果</th><th>时间</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </div>
 
-// AI极小极大算法
-function aiMove(){
-    let bestScore = -Infinity;
-    let bestPos;
-    for(let i=0;i<9;i++){
-        if(!board[i]){
-            board[i] = AI;
-            const s = minimax(board, false);
-            board[i] = null;
-            if(s>bestScore){
-                bestScore = s;
-                bestPos = i;
+    <script>
+        // 分类后缀映射模板（WorkBuddy Agent生成，人工审核修改）
+        const ruleMap = {
+            "图片": [".jpg",".png",".jpeg",".gif"],
+            "PDF课件": [".pdf"],
+            "文档": [".docx",".doc",".txt"],
+            "压缩包": [".zip",".rar",".7z"],
+            "日志": [".log"]
+        }
+        // 黑名单关键词
+        const blackListKeyword = ["data","dataset"]
+        let dirHandle = null
+        let previewPlan = []
+        let records = JSON.parse(localStorage.getItem("fileSortRecords") || "[]")
+
+        const $ = s=>document.querySelector(s)
+        const $$ = s=>document.querySelectorAll(s)
+
+        $("#selectFolder").onclick = async ()=>{
+            try{
+                dirHandle = await window.showDirectoryPicker()
+                $("#folderInfo").innerText = "已选中目录："+dirHandle.name
+                $("#genPreview").disabled = false
+            }catch(e){
+                alert("打开文件夹失败："+e.message)
             }
         }
-    }
-    board[bestPos] = AI;
-    render();
-    const win = checkWin(board);
-    if(win){
-        msgEl.innerText = "😵 AI获胜";
-        return;
-    }
-    if(isFull(board)){
-        msgEl.innerText = "🤝 平局";
-        return;
-    }
-    msgEl.innerText = "轮到你下棋（X）";
-}
 
-function minimax(b, isMax){
-    const res = checkWin(b);
-    if(res===AI) return 10;
-    if(res===HUMAN) return -10;
-    if(isFull(b)) return 0;
-
-    if(isMax){
-        let score = -Infinity;
-        for(let i=0;i<9;i++){
-            if(!b[i]){
-                b[i]=AI;
-                score = Math.max(score, minimax(b,false));
-                b[i]=null;
+        $("#genPreview").onclick = async ()=>{
+            previewPlan = []
+            const previewBox = $("#previewList")
+            previewBox.innerHTML = ""
+            for await (const [name,handle] of dirHandle){
+                if(handle.kind !== "file") continue
+                let skip = false
+                for(const kw of blackListKeyword){
+                    if(name.toLowerCase().includes(kw)){skip=true;break;}
+                }
+                if(skip){
+                    previewBox.innerHTML += `<p>⏭️ 跳过：${name}（黑名单）</p>`
+                    continue
+                }
+                let ext = "."+name.split(".").pop().toLowerCase()
+                let targetFolder = "其他文件"
+                for(const [cate,exts] of Object.entries(ruleMap)){
+                    if(exts.includes(ext)){targetFolder = cate;break;}
+                }
+                previewPlan.push({
+                    fileName:name,
+                    targetCate:targetFolder
+                })
+                previewBox.innerHTML += `<p>📦 ${name} → /${targetFolder}/${name}</p>`
             }
+            $("#runSort").disabled = false
         }
-        return score;
-    }else{
-        let score = Infinity;
-        for(let i=0;i<9;i++){
-            if(!b[i]){
-                b[i]=HUMAN;
-                score = Math.min(score, minimax(b,true));
-                b[i]=null;
-            }
-        }
-        return score;
-    }
-}
 
-function checkWin(b){
-    const lines = [
-        [0,1,2],[3,4,5],[6,7,8],
-        [0,3,6],[1,4,7],[2,5,8],
-        [0,4,8],[2,4,6]
-    ]
-    for(let [a,aa,aaa] of lines){
-        if(b[a] && b[a]===b[aa] && b[a]===b[aaa]) return b[a];
-    }
-    return null;
-}
-function isFull(b){
-    return b.every(x=>x!==null);
-}
-function restart(){
-    board = [null,null,null,null,null,null,null,null,null];
-    msgEl.innerText = "轮到你下棋（X）";
-    render();
-}
-render();
-</script>
+        $("#runSort").onclick = async ()=>{
+            if(!confirm("确认执行文件移动？操作记录可回滚")) return
+            for(const item of previewPlan){
+                try{
+                    let targetDir
+                    try{
+                        targetDir = await dirHandle.getDirectoryHandle(item.targetCate)
+                    }catch{
+                        targetDir = await dirHandle.getDirectoryHandle(item.targetCate,{create:true})
+                    }
+                    const srcFile = await dirHandle.getFileHandle(item.fileName)
+                    await srcFile.move(targetDir,item.fileName)
+                    addRecord(srcFile.name,`/${item.targetCate}/${item.fileName}`,"移动","成功")
+                }catch(e){
+                    addRecord(item.fileName,"","移动","失败:"+e.message)
+                }
+            }
+            saveRecords()
+            renderTable()
+            alert("整理完成，请校验文件数量")
+        }
+
+        function addRecord(src,dst,action,result){
+            records.push({srcPath:src,dstPath:dst,action,result,time:new Date().toLocaleString()})
+        }
+        function saveRecords(){
+            localStorage.setItem("fileSortRecords",JSON.stringify(records))
+        }
+        function renderTable(){
+            const tb = $("#recordTable tbody")
+            tb.innerHTML = ""
+            records.forEach(r=>{
+                tb.innerHTML += `<tr><td>${r.srcPath}</td><td>${r.dstPath}</td><td>${r.action}</td><td>${r.result}</td><td>${r.time}</td></tr>`
+            })
+        }
+
+        $("#exportCSV").onclick = ()=>{
+            let csv = "源路径,目标路径,动作,结果,时间\n"
+            records.forEach(r=>csv += `${r.srcPath},${r.dstPath},${r.action},${r.result},${r.time}\n`)
+            const blob = new Blob([csv],{type:"text/csv"})
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement("a")
+            a.href = url
+            a.download = "fileSortRecord.csv"
+            a.click()
+            URL.revokeObjectURL(url)
+        }
+
+        renderTable()
+    </script>
 </body>
 </html>
